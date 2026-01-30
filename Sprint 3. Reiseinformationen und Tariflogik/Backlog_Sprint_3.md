@@ -1,4 +1,4 @@
-# Sprint Backlog: Sprint 3 – Reiseabschluss & Tariflogik
+# Sprint 3: Reiseinformationen und Tariflogik
 
 ### Kurzfassung
 
