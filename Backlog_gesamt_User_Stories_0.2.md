@@ -7,10 +7,13 @@
  
 ---
 ### User-Story 2.1: Fahrgast
- "Als Fahrgast benötige ich Zeit zum Ein- und Umsteigen. Außerdem möchte ich nicht nur in eine Richtung fahren können, sondern auch zurück."
+"Als Fahrgast benötige ich Zeit zum Ein- und Aussteigen, deshalb muss die Bahn ein wenig an jeder Station verweilen."
+
+### User-Story 2.2: Fahrgast
+"Ich möchte nicht nur in eine Richtung fahren können, sondern auch zurück."
  
-### User-Story 2.2: Verkehrsbetrieb (Kunde)
- "Für unser Unternehmen möchte ich die Logik der Teststrecke mit Blick auf die tatsächliche Anwendung erweitern und auf die Struktur der Linie U1 übertragen."
+### User-Story 2.3: Verkehrsbetrieb (Kunde)
+"Mit Blick auf die reale Anwendung möchten wir die Logik der Teststrecke auf die Struktur der Linie U1 übertragen."
  
 ---
 ### User Story 3.1: Verkehrsbetrieb (Kunde)
