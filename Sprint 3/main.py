@@ -22,8 +22,15 @@ def main():
         print("Bitte gültige Ziel-Haltestelle eingeben.")
 
     # Früheste Abfahrt
-    zeit = input("Früheste Abfahrt (HH:MM): ")
-
+    while True:
+        zeit_input = input("Früheste Abfahrt (HH:MM): ")
+        try:
+            # Prüfen ob Format korrekt ist
+            datetime.strptime(zeit_input, "%H:%M")
+            zeit = zeit_input
+            break
+        except ValueError:
+            print("Bitte gültige Uhrzeit im Format HH:MM eingeben (z.B. 08:30).")
     # Nächste Abfahrt berechnen
     abfahrt = linie.naechste_abfahrt(start, ziel, zeit)
     if abfahrt is None:

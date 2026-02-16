@@ -5,15 +5,21 @@ class TicketKategorie:
 
     @staticmethod
     def bestimme_kategorie(stationen: int) -> str:
-        if stationen <= 3:
+        if stationen < 1:
+            raise ValueError("Stationen müssen mindestens 1 sein.")
+
+        if 1 <= stationen <= 3:
             return TicketKategorie.KURZ
-        elif stationen <= 8:
+        elif 4 <= stationen <= 8:
             return TicketKategorie.MITTEL
-        return TicketKategorie.LANG
+        else:
+            return TicketKategorie.LANG
+
 
 class TicketArt:
     EINZEL = "Einzelticket"
     MEHRFAHRT = "Mehrfahrtenticket"
+
 
 class TarifRechner:
     BASISPREISE = {
@@ -30,12 +36,29 @@ class TarifRechner:
     }
 
     @staticmethod
-    def berechne_preis(kategorie: str, ticketart: str, sozialrabatt: bool, barzahlung: bool) -> float:
-        preis = TarifRechner.BASISPREISE[ticketart][kategorie]
+    def berechne_preis(kategorie: str,
+                       ticketart: str,
+                       sozialrabatt: bool = False,
+                       barzahlung: bool = False) -> float:
+
+        basispreis = TarifRechner.BASISPREISE[ticketart][kategorie]
+
+        # Prozentuale Änderungen sammeln
+        prozent_aenderung = 0.0
+
+        # +10% für Einzelticket
         if ticketart == TicketArt.EINZEL:
-            preis *= 1.10
+            prozent_aenderung += 0.10
+
+        # -20% Sozialrabatt
         if sozialrabatt:
-            preis *= 0.80
+            prozent_aenderung -= 0.20
+
+        # +15% Barzahlung
         if barzahlung:
-            preis *= 1.15
-        return round(preis, 2)
+            prozent_aenderung += 0.15
+
+        # Einmalige Berechnung
+        endpreis = basispreis * (1 + prozent_aenderung)
+
+        return round(endpreis, 2)
