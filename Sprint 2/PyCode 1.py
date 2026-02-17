@@ -1,34 +1,111 @@
+import re
 from typing import List
+from difflib import SequenceMatcher
 
-# ----------------- Haltezeiten -----------------
+# =========================================================
+# Eingabe-Normalisierung
+# =========================================================
+
+class InputNormalizer:
+    UMLAUTS = {
+        "ä": "ae", "ö": "oe", "ü": "ue", "ß": "ss"
+    }
+
+    ABBREVIATIONS = {
+        r"\bhbf\.?\b": "hauptbahnhof",
+        r"\bstr\.?\b": "strasse",
+        r"\bfr\.\-?\b": "friedrich"
+    }
+
+    @classmethod
+    def normalize(cls, text: str) -> str:
+        text = text.strip().lower().replace("-", " ")
+
+        for k, v in cls.UMLAUTS.items():
+            text = text.replace(k, v)
+
+        for pattern, replacement in cls.ABBREVIATIONS.items():
+            text = re.sub(pattern, replacement, text)
+
+        return re.sub(r"\s+", " ", text)
+
+
+# =========================================================
+# Fuzzy-Matching
+# =========================================================
+
+class FuzzyMatcher:
+    @staticmethod
+    def similarity(a: str, b: str) -> float:
+        return SequenceMatcher(None, a, b).ratio()
+
+
+# =========================================================
+# Haltestellen-Finder
+# =========================================================
+
+class HaltestellenFinder:
+    def __init__(self, haltestellen: List[str]) -> None:
+        self.haltestellen = haltestellen
+
+    def finde(self, user_input: str) -> str | None:
+        user_norm = InputNormalizer.normalize(user_input)
+        kandidaten = []
+
+        for name in self.haltestellen:
+            score = FuzzyMatcher.similarity(
+                user_norm,
+                InputNormalizer.normalize(name)
+            )
+            if score >= 0.8:
+                kandidaten.append((name, score))
+
+        if not kandidaten:
+            print("❌ Diese Haltestelle existiert nicht auf der Linie oder die Eingabe ist zu ungenau.")
+            return None
+
+        kandidaten.sort(key=lambda x: x[1], reverse=True)
+
+        if len(kandidaten) > 1 and kandidaten[0][1] - kandidaten[1][1] < 0.05:
+            print("⚠️ Die Eingabe ist nicht eindeutig. Bitte genauer eingeben.")
+            return None
+
+        return kandidaten[0][0]
+
+
+# =========================================================
+# Haltezeit & Haltestelle
+# =========================================================
+
 def haltezeit(name: str, erster_umlauf: bool = False) -> int:
-    """
-    Gibt die Haltezeit in Sekunden zurück.
-    Ausnahme: erster Zug um 05:00 ab Langwasser Süd → Haltezeiten zählen nicht.
-    """
     if erster_umlauf and name == "Langwasser Süd":
-        return 0  # erste Fahrt ab 05:00 → keine Haltezeit am Start
-    if name in ("Plärrer", "Hauptbahnhof", "Langwasser Süd", "Fürth Hbf."):
+        return 0
+    if name in ("Plärrer", "Hauptbahnhof", "Langwasser Süd", "Fürth Hauptbahnhof"):
         return 60
     return 30
 
-# ----------------- Klasse Haltestelle -----------------
+
 class Haltestelle:
     def __init__(self, name: str, fahrzeit_zur_naechsten_min: int, haltezeit_sec: int) -> None:
-        self.name: str = name
-        self.fahrzeit_zur_naechsten: int = fahrzeit_zur_naechsten_min * 60
-        self.haltezeit: int = haltezeit_sec
+        self.name = name
+        self.fahrzeit_zur_naechsten = fahrzeit_zur_naechsten_min * 60
+        self.haltezeit = haltezeit_sec
 
-# ----------------- Klasse Linie U1 -----------------
+
+# =========================================================
+# Linie U1
+# =========================================================
+
 class LinieU1:
     def __init__(self) -> None:
         self.haltestellen: List[Haltestelle] = []
-        self.takt: int = 10 * 60
-        self.startzeit: int = self.hhmm_to_seconds("05:00")
-        self.endzeit: int = self.hhmm_to_seconds("23:00")
+        self.takt = 10 * 60
+        self.startzeit = self.hhmm_to_seconds("05:00")
+        self.endzeit = self.hhmm_to_seconds("23:00")
+        self.finder: HaltestellenFinder | None = None
 
-    def add_haltestelle(self, haltestelle: Haltestelle) -> None:
-        self.haltestellen.append(haltestelle)
+    def add_haltestelle(self, h: Haltestelle) -> None:
+        self.haltestellen.append(h)
 
     @staticmethod
     def hhmm_to_seconds(hhmm: str) -> int:
@@ -42,64 +119,90 @@ class LinieU1:
         s = seconds % 60
         return f"{h:02d}:{m:02d}:{s:02d}"
 
-    # ----------------- Fahrzeitberechnung -----------------
-    def _fahrzeit_bis(self, von_idx: int, bis_idx: int, start_ist_umlauf: bool, halte_start: bool = True) -> int:
-        """
-        Berechnet Fahrzeit inkl. Haltezeiten zwischen von_idx und bis_idx.
-        halte_start=False → Haltezeit der ersten Station wird nicht gezählt (für Rückfahrt).
-        Zielhaltezeit wird nie gezählt.
-        """
-        zeit = 0
-        step = 1 if bis_idx > von_idx else -1
-        for i in range(von_idx, bis_idx, step):
-            zeit += self.haltestellen[i].fahrzeit_zur_naechsten
-            # Haltezeit der Zwischenstationen
-            if not (start_ist_umlauf and i == von_idx and self.haltestellen[i].name == "Langwasser Süd"):
-                if halte_start or i != von_idx:
-                    zeit += self.haltestellen[i].haltezeit
-        return zeit
+    def naechste_abfahrt(self, start: str, ziel: str, zeit_input: str) -> str | None:
+        try:
+            frueheste = self.hhmm_to_seconds(zeit_input)
+        except Exception:
+            print("❌ Ungültiges Zeitformat. Bitte HH:MM verwenden.")
+            return None
 
-    # ----------------- Berechnung der nächsten Abfahrt -----------------
-    def naechste_abfahrt(self, start_name: str, ziel_name: str, frueheste_hhmm: str) -> str:
-        frueheste = self.hhmm_to_seconds(frueheste_hhmm)
         namen = [h.name for h in self.haltestellen]
 
-        if start_name not in namen or ziel_name not in namen:
-            raise ValueError("Ungültige Haltestelle.")
-        if start_name == ziel_name:
-            raise ValueError("Start und Ziel dürfen nicht gleich sein.")
-
-        start_idx = namen.index(start_name)
-        ziel_idx = namen.index(ziel_name)
+        start_idx = namen.index(start)
+        ziel_idx = namen.index(ziel)
         hin = start_idx < ziel_idx
         umlauf = 0
 
         while True:
             start_langwasser = self.startzeit + umlauf * self.takt
             if start_langwasser > self.endzeit:
-                raise ValueError("Zu dieser Uhrzeit fährt keine Bahn mehr.")
-
-            # erster Umlauf für Haltezeit am Langwasser Süd Start
-            erster_umlauf = (umlauf == 0)
+                print("❌ Zu dieser Uhrzeit fährt keine Bahn mehr.")
+                return None
 
             if hin:
-                # -------- Hinfahrt --------
-                abfahrt_start = start_langwasser + self._fahrzeit_bis(0, start_idx, start_ist_umlauf=True)
+                abfahrt = start_langwasser
+                for i in range(start_idx):
+                    abfahrt += self.haltestellen[i].fahrzeit_zur_naechsten
+                    abfahrt += self.haltestellen[i].haltezeit
                 if start_idx != 0:
-                    abfahrt_start += self.haltestellen[start_idx].haltezeit
+                    abfahrt += self.haltestellen[start_idx].haltezeit
             else:
-                # -------- Rückfahrt --------
-                hin_gesamt = self._fahrzeit_bis(0, len(self.haltestellen) - 1, start_ist_umlauf=True)
-                wende = self.haltestellen[-1].haltezeit  # Haltezeit Fürth Hbf
-                rueck_bis_start = self._fahrzeit_bis(len(self.haltestellen) - 1, start_idx, start_ist_umlauf=False, halte_start=False)
-                abfahrt_start = start_langwasser + hin_gesamt + wende + rueck_bis_start
+                hin_gesamt = 0
+                for i in range(len(self.haltestellen) - 1):
+                    hin_gesamt += self.haltestellen[i].fahrzeit_zur_naechsten
+                    hin_gesamt += self.haltestellen[i].haltezeit
 
-            if abfahrt_start >= frueheste:
-                return self.seconds_to_hhmmss(abfahrt_start)
+                wende = self.haltestellen[-1].haltezeit
+
+                rueck = 0
+                for i in range(len(self.haltestellen) - 1, start_idx, -1):
+                    rueck += self.haltestellen[i - 1].fahrzeit_zur_naechsten
+                    rueck += self.haltestellen[i].haltezeit
+
+                abfahrt = start_langwasser + hin_gesamt + wende + rueck
+
+            if abfahrt >= frueheste:
+                return self.seconds_to_hhmmss(abfahrt)
 
             umlauf += 1
 
-# ----------------- Linie U1 erstellen -----------------
+
+# =========================================================
+# Benutzer-Dialog (SOFORTIGE VALIDIERUNG)
+# =========================================================
+
+class UserDialog:
+    def __init__(self, linie: LinieU1) -> None:
+        self.linie = linie
+
+    def start(self) -> None:
+        while True:
+            start_input = input("Start-Haltestelle: ")
+            start = self.linie.finder.finde(start_input)
+            if not start:
+                continue
+
+            ziel_input = input("Ziel-Haltestelle: ")
+            ziel = self.linie.finder.finde(ziel_input)
+            if not ziel:
+                continue
+
+            if start == ziel:
+                print("⚠️ Start und Ziel dürfen nicht gleich sein.")
+                continue
+
+            zeit = input("Früheste gewünschte Abfahrtszeit (HH:MM): ")
+
+            abfahrt = self.linie.naechste_abfahrt(start, ziel, zeit)
+            if abfahrt:
+                print(f"✅ Nächste Abfahrt: {abfahrt} Uhr")
+                break
+
+
+# =========================================================
+# Initialisierung
+# =========================================================
+
 linie_u1 = LinieU1()
 
 haltestellen_daten = [
@@ -125,23 +228,14 @@ haltestellen_daten = [
     ("Muggenhof", 3),
     ("Stadtgrenze", 2),
     ("Jakobinenstraße", 3),
-    ("Fürth Hbf.", 0),
+    ("Fürth Hauptbahnhof", 0),
 ]
 
 for name, fahrzeit in haltestellen_daten:
-    # erster Umlauf Langwasser Süd
-    if name == "Langwasser Süd":
-        linie_u1.add_haltestelle(Haltestelle(name, fahrzeit, haltezeit(name, erster_umlauf=True)))
-    else:
-        linie_u1.add_haltestelle(Haltestelle(name, fahrzeit, haltezeit(name)))
+    linie_u1.add_haltestelle(
+        Haltestelle(name, fahrzeit, haltezeit(name, name == "Langwasser Süd"))
+    )
 
-# ----------------- Benutzerabfrage -----------------
-start = input("Start-Haltestelle: ")
-ziel = input("Ziel-Haltestelle: ")
-zeit = input("Früheste gewünschte Abfahrtszeit (HH:MM): ")
+linie_u1.finder = HaltestellenFinder([h.name for h in linie_u1.haltestellen])
 
-try:
-    abfahrt = linie_u1.naechste_abfahrt(start, ziel, zeit)
-    print(f"Nächste Abfahrt: {abfahrt} Uhr")
-except ValueError as e:
-    print(e)
+UserDialog(linie_u1).start()

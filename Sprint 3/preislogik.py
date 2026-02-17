@@ -36,19 +36,23 @@ class TarifRechner:
     }
 
     @staticmethod
-    def berechne_preis(kategorie: str,
-                       ticketart: str,
-                       sozialrabatt: bool = False,
-                       barzahlung: bool = False) -> float:
+    def berechne_preis(
+        kategorie: str,
+        ticketart: str,
+        sozialrabatt: bool = False,
+        barzahlung: bool = False
+    ) -> float:
+
+        if ticketart not in TarifRechner.BASISPREISE:
+            raise ValueError(f"Unbekannte Ticketart: {ticketart}")
+
+        if kategorie not in TarifRechner.BASISPREISE[ticketart]:
+            raise ValueError(f"Unbekannte Kategorie: {kategorie}")
 
         basispreis = TarifRechner.BASISPREISE[ticketart][kategorie]
 
         # Prozentuale Änderungen sammeln
         prozent_aenderung = 0.0
-
-        # +10% für Einzelticket
-        if ticketart == TicketArt.EINZEL:
-            prozent_aenderung += 0.10
 
         # -20% Sozialrabatt
         if sozialrabatt:
@@ -58,7 +62,7 @@ class TarifRechner:
         if barzahlung:
             prozent_aenderung += 0.15
 
-        # Einmalige Berechnung
+        # Einmalige Anwendung auf Grundpreis
         endpreis = basispreis * (1 + prozent_aenderung)
 
         return round(endpreis, 2)
